@@ -1,0 +1,5 @@
+{
+  // Lets the sparklines and colours show correctly when running scripts by hand in the terminal.
+  "terminal.integrated.env.windows": { "PYTHONIOENCODING": "utf-8" },
+  "python.terminal.executeInFileDir": false
+}
