@@ -1,0 +1,159 @@
+
+====================================================================================================
+1. File as delivered
+====================================================================================================
+rows=521  first=2023-01-03  last=2024-12-31  NaNs=0
+weekday counts (Mon=0): {0: 104, 1: 105, 2: 104, 3: 104, 4: 104}
+calendar years covered: 2  ->  rows per year in file: 260.5
+
+====================================================================================================
+2. Rows dated on NYSE full-day market closures
+====================================================================================================
+19 rows fall on days the exchange was closed; all have non-zero returns:
+            strategy  benchmark
+date                           
+2023-01-16   -0.0043    -0.0215
+2023-02-20   -0.0036    -0.0018
+2023-04-07   -0.0217    -0.0112
+2023-05-29   -0.0085    -0.0118
+2023-06-19    0.0228     0.0194
+2023-07-04    0.0024    -0.0329
+2023-09-04    0.0098    -0.0061
+2023-11-23    0.0046    -0.0153
+2023-12-25   -0.0018     0.0109
+2024-01-01   -0.0143    -0.0235
+2024-01-15   -0.0252    -0.0093
+2024-02-19    0.0183     0.0055
+2024-03-29    0.0128     0.0091
+2024-05-27   -0.0127     0.0018
+2024-06-19    0.0119    -0.0226
+2024-07-04    0.0175     0.0005
+2024-09-02    0.0088     0.0048
+2024-11-28    0.0126    -0.0026
+2024-12-25    0.0090     0.0113
+NYSE trading days in window (2023: 250, 2024: 252) = 502; file has 521
+largest |benchmark| day in the file: 2023-07-04 -0.0329
+
+====================================================================================================
+3. Benchmark on well-known market days (S&P 500 moves from public record, approximate)
+====================================================================================================
+2023-03-09  benchmark=+0.0012  strategy=+0.0129   (SVB stress, S&P 500 about -1.8%)
+2024-08-05  benchmark=+0.0178  strategy=+0.0062   (yen carry unwind / VIX spike, S&P 500 about -3.0%)
+2024-12-18  benchmark=-0.0047  strategy=+0.0134   (hawkish FOMC, S&P 500 about -2.9%)
+
+====================================================================================================
+4. Headline metrics, file as delivered (521 rows, annualised with 252)
+====================================================================================================
+               n  ann_mean  ann_vol  sharpe   total     mdd  cvar95  cvar99    skew  kurt_raw  mean_ci_ann_lo  mean_ci_ann_hi
+strategy   521.0    0.3510   0.1586  2.2138  1.0124 -0.1204 -0.0191 -0.0262 -0.1455    2.9054          0.1331          0.5581
+benchmark  521.0    0.1111   0.1608  0.6908  0.2250 -0.1147 -0.0206 -0.0253 -0.0927    2.7921         -0.0687          0.2862
+active     521.0    0.2399   0.1539  1.5593  0.6023 -0.1174 -0.0185 -0.0252  0.2350    3.6818          0.0301          0.4442
+CAGR over 2 calendar years: {'strategy': np.float64(0.4186), 'benchmark': np.float64(0.1068)}
+Sharpe net of an assumed 5% risk-free rate: {'strategy': np.float64(1.898), 'benchmark': np.float64(0.38)}
+
+====================================================================================================
+5. Same metrics on the 502 exchange trading days only
+====================================================================================================
+ strategy: Sharpe/IR=2.210  total=+0.9399
+benchmark: Sharpe/IR=1.036  total=+0.3502
+   active: Sharpe/IR=1.221  total=+0.4052
+
+====================================================================================================
+6. Regression on the benchmark (Newey-West HAC, 5 lags)
+====================================================================================================
+alpha/day=0.00116 (ann 0.292), t=3.15
+beta=0.528, t=13.85, R2=0.287, corr=0.536
+residual vol ann=0.134; appraisal ratio (alpha/resid vol) ann=2.184
+Treynor-Mazuy timing gamma=4.18, t=1.45; alpha t=1.64
+up-market capture=0.721  down-market capture=0.443
+hit rate: strategy 0.555, benchmark 0.522, active>0 0.545
+autocorr lag1: {'strategy': np.float64(-0.018), 'benchmark': np.float64(-0.099), 'active': np.float64(-0.089)}
+
+====================================================================================================
+7. Sub-periods
+====================================================================================================
+          n  strat_sharpe  bench_sharpe  strat_ret  bench_ret  active_IR
+date                                                                    
+2023  259.0         1.467         0.443      0.237      0.062      1.008
+2024  262.0         2.876         0.937      0.627      0.154      2.050
+             n  strat_sharpe  bench_sharpe  strat_ret  bench_ret  active_IR
+date                                                                       
+2023 H1  129.0         1.670         0.925      0.134      0.068      0.808
+     H2  130.0         1.247         0.016      0.091     -0.006      1.200
+2024 H1  130.0         3.910         1.143      0.387      0.095      2.618
+     H2  132.0         1.881         0.717      0.173      0.053      1.404
+
+Split at the assumed GPT-4o training cutoff (Oct 2023):
+                                n  strat_sharpe  bench_sharpe  strat_ret  bench_ret  active_IR
+pre-cutoff (<=2023-09-30)   194.0         1.436         0.058      0.168     -0.003      1.401
+post-cutoff (>=2023-10-01)  327.0         2.633         1.073      0.723      0.229      1.645
+
+Quarterly:
+           n  strat_sharpe  bench_sharpe  strat_ret  bench_ret  active_IR
+date                                                                     
+2023Q1  64.0         4.039         0.652      0.145      0.022      3.287
+2023Q2  65.0        -0.135         1.166     -0.010      0.046     -1.399
+2023Q3  65.0         0.912        -1.383      0.030     -0.067      2.538
+2023Q4  65.0         1.546         1.619      0.059      0.065     -0.168
+2024Q1  65.0         3.157         1.310      0.144      0.052      2.116
+2024Q2  65.0         4.674         0.982      0.213      0.041      3.033
+2024Q3  66.0         1.317         0.540      0.053      0.019      0.857
+2024Q4  66.0         2.369         0.885      0.115      0.034      1.917
+quarters with active return > 0: 6 of 8
+
+====================================================================================================
+8. Moving-block bootstrap (circular, 10,000 draws)
+====================================================================================================
+block= 5: strategy SR 95% CI [0.89, 3.56]; SR(strat)-SR(bench) CI [0.25, 2.76], P(diff<=0)=0.0099; mean active ann CI [0.038, 0.439]
+block=10: strategy SR 95% CI [0.85, 3.54]; SR(strat)-SR(bench) CI [0.20, 2.81], P(diff<=0)=0.0108; mean active ann CI [0.029, 0.444]
+block=20: strategy SR 95% CI [0.89, 3.50]; SR(strat)-SR(bench) CI [0.11, 2.92], P(diff<=0)=0.0176; mean active ann CI [0.016, 0.458]
+Wilcoxon signed-rank strategy vs benchmark (secondary, assumes independence): z=1.86, p=0.063
+Analytic (Lo 2002, iid) SE of annualised Sharpe at n=521: 0.70
+
+====================================================================================================
+9. Deflated Sharpe ratio (Bailey & Lopez de Prado 2014) - search budget 40 prompt variants
+====================================================================================================
+
+strategy Sharpe vs 0: per-period SR=0.1395 (ann 2.21), skew=-0.146, raw kurt=2.905, PSR vs 0 = 0.9991
+                                        N_eff=5            N_eff=10            N_eff=20            N_eff=40
+sd(SR) across variants=0.25  SR0=0.30 DSR=0.997  SR0=0.39 DSR=0.995  SR0=0.48 DSR=0.993  SR0=0.55 DSR=0.991
+sd(SR) across variants=0.50  SR0=0.60 DSR=0.989  SR0=0.79 DSR=0.978  SR0=0.95 DSR=0.963  SR0=1.09 DSR=0.943
+sd(SR) across variants=0.75  SR0=0.89 DSR=0.969  SR0=1.18 DSR=0.928  SR0=1.43 DSR=0.868  SR0=1.64 DSR=0.791
+sd(SR) across variants=1.00  SR0=1.19 DSR=0.926  SR0=1.57 DSR=0.817  SR0=1.90 DSR=0.671  SR0=2.19 DSR=0.514
+
+active IR vs benchmark (stock-picking skill): per-period SR=0.0982 (ann 1.56), skew=0.235, raw kurt=3.682, PSR vs 0 = 0.9880
+                                        N_eff=5            N_eff=10            N_eff=20            N_eff=40
+sd(SR) across variants=0.25  SR0=0.30 DSR=0.966  SR0=0.39 DSR=0.954  SR0=0.48 DSR=0.942  SR0=0.55 DSR=0.929
+sd(SR) across variants=0.50  SR0=0.60 DSR=0.918  SR0=0.79 DSR=0.868  SR0=0.95 DSR=0.811  SR0=1.09 DSR=0.749
+sd(SR) across variants=0.75  SR0=0.89 DSR=0.832  SR0=1.18 DSR=0.708  SR0=1.43 DSR=0.577  SR0=1.64 DSR=0.452
+sd(SR) across variants=1.00  SR0=1.19 DSR=0.702  SR0=1.57 DSR=0.491  SR0=1.90 DSR=0.310  SR0=2.19 DSR=0.181
+
+====================================================================================================
+10. Cost sensitivity: annualised Sharpe after costs (turnover scenarios; positions not in file)
+====================================================================================================
+                     2 bps/side  5 bps/side  10 bps/side  20 bps/side
+daily turnover 10%         2.18        2.13         2.05         1.90
+daily turnover 25%         2.13        2.02         1.82         1.42
+daily turnover 50%         2.05        1.82         1.42         0.62
+daily turnover 100%        1.90        1.42         0.62        -0.96
+daily cost budget before strategy falls to Sharpe 0: 13.9 bps of NAV/day (= 27.9 bps/side at 50% daily turnover, 13.9 bps/side at 100%)
+daily cost budget before strategy falls to benchmark Sharpe: 9.6 bps of NAV/day (= 19.2 bps/side at 50% daily turnover, 9.6 bps/side at 100%)
+annual excess return over benchmark to absorb costs: 0.240
+
+====================================================================================================
+11. Contribution of the 19 holiday rows, and key tests re-run on the 502 trading days
+====================================================================================================
+sum of returns on holiday rows: strategy +0.0385, benchmark -0.0952, active +0.1337  (vs full-file active sum +0.4960)
+holiday rows = 3.6% of rows but 27.0% of summed active return
+trading days only: alpha ann=0.256 (HAC t=2.74), beta=0.544
+trading days only, block=10: strategy SR CI [0.82, 3.60]; SR diff CI [-0.15, 2.49], P(diff<=0)=0.0402; mean active ann CI [-0.027, 0.387]
+trading days only, active IR=1.22, PSR vs 0=0.958
+  DSR (N_eff=40, sd(SR)=0.25): 0.830;  (N_eff=10): 0.879
+  DSR (N_eff=40, sd(SR)=0.5): 0.571;  (N_eff=10): 0.730
+  DSR (N_eff=40, sd(SR)=0.75): 0.276;  (N_eff=10): 0.523
+max drawdown (strategy, benchmark): -0.1204 -0.1147
+
+====================================================================================================
+12. Inference cost scenario (assumptions, not data)
+====================================================================================================
+per call $0.0210; one full backtest run $63,252; 40 variants $2,530,080; live per year $31,752
