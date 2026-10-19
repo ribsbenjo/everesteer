@@ -225,3 +225,4 @@ __marimo__/
 * (1).pdf
 # local backups made while editing (git history replaces them)
 Everesteer_backtest/backups/
+.Rhistory
