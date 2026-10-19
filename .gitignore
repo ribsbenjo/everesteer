@@ -218,3 +218,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- everesteer workspace ---
+.DS_Store
+# byte-identical duplicate downloads of the papers
+* (1).pdf
+# local backups made while editing (git history replaces them)
+Everesteer_backtest/backups/
