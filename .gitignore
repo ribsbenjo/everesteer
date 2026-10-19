@@ -1,0 +1,25 @@
+# secrets
+.env
+.env.*
+*.key
+*.pem
+*token*
+*secret*
+*apikey*
+*api_key*
+# data and artefacts
+*.parquet
+*.pkl
+*.npy
+data/
+datasets/
+rounds/
+models/
+# logs
+*.log
+logs/
+nohup.out
+# python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
