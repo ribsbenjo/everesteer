@@ -93,6 +93,12 @@ CONFIG = {
     "max_weight": 0.10,                   # FILL: per-asset absolute weight cap
     "allow_short": True,                  # FILL
 
+    # --- leak test ---
+    "leak_epochs": 20,                    # cut-off dates t tested: half round dates, half spread over the history
+    "leak_kinds": ("noise", "shock", "extreme", "sign", "shuffle", "nan"),  # ways to rewrite the data after t
+    "leak_gap_frac": 0.05,                # also test a copy with this share of random NaN gaps (0 = off)
+    "leak_budget_s": 60,                  # stop starting new epochs after this many seconds
+
     # --- reporting ---
     "holdout_frac": 0.3,                  # later share of rounds kept as holdout
     "bootstrap_n": 2000,
@@ -351,38 +357,137 @@ def stress(data: pd.DataFrame, rng: np.random.Generator) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # 7. Leak test
 # ---------------------------------------------------------------------------
-def leak_test(mod, prices: pd.DataFrame, dates: list, rng: np.random.Generator, n: int = 5) -> tuple[bool, str]:
-    """Replace everything after t with noise; signal rows <= t must not change.
+def perturb(data: pd.DataFrame, after: np.ndarray, kind: str, rng: np.random.Generator) -> pd.DataFrame:
+    """Copy of data with every row where `after` is True rewritten; earlier rows untouched."""
+    out = data.copy()
+    block = out.loc[after].to_numpy(dtype=float, copy=True)
+    if kind == "noise":        # x exp(N(0, 0.2)): small moves, never crosses a far threshold
+        block = block * np.exp(rng.normal(0.0, 0.2, size=block.shape))
+    elif kind == "shock":      # level jump: x10 plus an offset
+        block = block * 10.0 + np.nanstd(block) * 10.0
+    elif kind == "extreme":    # +/-1e9: crosses almost any threshold a future value could pass
+        block = np.where(rng.random(block.shape) < 0.5, 1e9, -1e9)
+    elif kind == "sign":       # negative prices: flips anything return-like
+        block = -block
+    elif kind == "shuffle":    # same values, different order in time
+        block = block[rng.permutation(len(block))]
+    elif kind == "nan":        # the future disappears
+        block[:] = np.nan
+    else:
+        raise ValueError(f"unknown leak_kinds entry: {kind!r}")
+    out.loc[after] = block
+    return out
 
-    Needs main.signal(prices) -> date x asset panel. Without it we can only check determinism.
+
+def first_diff(a: pd.DataFrame, b: pd.DataFrame, t):
+    """(date, asset) of the first cell on rows <= t where a and b differ (NaN == NaN), or None."""
+    a, b = a.loc[:t].align(b.loc[:t], join="outer")
+    same = np.isclose(a.to_numpy(dtype=float), b.to_numpy(dtype=float), rtol=1e-9, atol=1e-10, equal_nan=True)
+    if same.all():
+        return None
+    r, c = np.argwhere(~same)[0]
+    return a.index[r], a.columns[c]
+
+
+def leak_epochs(prices: pd.DataFrame, dates: list, n: int, rng: np.random.Generator) -> list:
+    """Half of the n cut-offs from the round dates, half spread over the history (one per slice)."""
+    k = min(len(dates), n // 2)
+    picked = {dates[i] for i in rng.choice(len(dates), size=k, replace=False)}
+    lo, hi = 60 + CONFIG["data_lag"], len(prices) - 2  # skip the warm-up; keep a later row to perturb
+    if hi > lo:
+        edges = np.linspace(lo, hi, n - k + 1).astype(int)
+        picked |= {prices.index[rng.integers(a, max(a + 1, b))] for a, b in zip(edges[:-1], edges[1:])}
+    picked = sorted(picked)
+    return [picked[i] for i in rng.permutation(len(picked))]  # random order: a budget stop still spreads out
+
+
+def leak_test(mod, prices: pd.DataFrame, dates: list, rng: np.random.Generator, n: int | None = None) -> tuple[bool, str]:
+    """Rewrite the data after t in several ways; signal rows <= t must not change.
+
+    For each cut-off t (CONFIG leak_epochs):
+      - each kind in CONFIG leak_kinds rewrites the rows after t; signal() must be unchanged on rows <= t,
+      - signal(prices[:t]) must equal signal(prices) on rows <= t (truncation),
+      - forecast(data visible at t) must equal signal(prices).loc[t].
+    With leak_gap_frac > 0 the first two checks also run on a copy with random NaN gaps, where
+    backfill / interpolation leaks show up. A crash on a rewritten input is reported, not counted as
+    a leak. A pass only means no witness was found. Needs main.signal(); without it only determinism.
     """
-    sample = list(rng.choice(len(dates), size=min(n, len(dates)), replace=False))
+    rng = np.random.default_rng(rng.integers(2**63))  # own stream: the bootstrap CI does not depend on leak settings
+    n = n or CONFIG["leak_epochs"]
     if not hasattr(mod, "signal"):
-        for i in sample:
+        for i in rng.choice(len(dates), size=min(n, len(dates)), replace=False):
             data = visible_data(prices, dates[i])
             a, b = mod.forecast(data.copy()), mod.forecast(data.copy())
             if not a.equals(b):
                 return False, f"non-deterministic forecast at {dates[i].date()}"
         return True, "determinism only (add signal() to main.py for a real leak test)"
-    clean = mod.signal(prices.copy())
-    for i in sample:
-        t = dates[i]
-        noisy = prices.copy()
-        after = noisy.index > t
-        noisy.loc[after] = noisy.loc[after] * np.exp(rng.normal(0, 0.2, size=noisy.loc[after].shape))
-        dirty = mod.signal(noisy)
-        a, b = clean.loc[:t].fillna(0), dirty.loc[:t].fillna(0)
-        if not np.allclose(a.values, b.values, atol=1e-10):
-            bad = (a - b).abs().max(axis=1)
-            first = bad[bad > 1e-10].index[0]
-            return False, f"LEAK: signal at {first.date()} changes when data after {t.date()} changes"
-        # forecast(prices[:t]) must match signal(full).loc[t]
-        f = mod.forecast(visible_data(prices, t).copy())
-        last_visible = visible_data(prices, t).index[-1]
-        ref = clean.loc[last_visible].reindex(f.index)
-        if not np.allclose(f.fillna(0).values, ref.fillna(0).values, atol=1e-8):
-            return False, f"forecast() != signal().loc[t] at {t.date()} (window / truncation mismatch)"
-    return True, f"passed on {len(sample)} rounds"
+
+    started, errors = time.time(), []
+    kinds = CONFIG["leak_kinds"]
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")  # log of negative prices etc. would flood the report
+        try:
+            clean = pd.DataFrame(mod.signal(prices.copy()))
+            again = pd.DataFrame(mod.signal(prices.copy()))
+        except Exception as e:  # noqa: BLE001
+            return False, f"could not run: signal() raised {type(e).__name__}: {e}"
+        if first_diff(clean, again, prices.index[-1]) is not None:
+            return False, "signal() gives different output on identical input (fix seeds / state first)"
+        panels = [("", prices, clean)]
+        gap = CONFIG["leak_gap_frac"]
+        if gap:
+            gapped = prices.mask(rng.random(prices.shape) < gap)
+            try:
+                panels.append((f", {gap:.0%} gaps", gapped, pd.DataFrame(mod.signal(gapped.copy()))))
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"gapped data: {type(e).__name__}: {e}")
+
+        epochs = leak_epochs(prices, dates, n, rng)
+        done = 0
+        for t in epochs:
+            if done and time.time() - started > CONFIG["leak_budget_s"]:  # always test at least one epoch
+                break
+            done += 1
+            after = np.asarray(prices.index > t)
+            for tag, data, base in panels:
+                for kind in kinds:
+                    try:
+                        out = pd.DataFrame(mod.signal(perturb(data, after, kind, rng)))
+                    except Exception as e:  # noqa: BLE001 - a crash on odd input is not a leak
+                        errors.append(f"{kind}{tag} at {t.date()}: {type(e).__name__}: {e}")
+                        continue
+                    d = first_diff(base, out, t)
+                    if d is not None:
+                        return False, (f"LEAK: signal at {d[0].date()} [{d[1]}] changes when data after "
+                                       f"{t.date()} changes ({kind}{tag})")
+                try:
+                    part = pd.DataFrame(mod.signal(data.loc[:t].copy()))
+                except Exception as e:  # noqa: BLE001
+                    errors.append(f"truncation{tag} at {t.date()}: {type(e).__name__}: {e}")
+                    continue
+                d = first_diff(base, part, t)
+                if d is not None:
+                    return False, (f"LEAK: signal at {d[0].date()} [{d[1]}] changes when the data is cut "
+                                   f"after {t.date()} (truncation{tag})")
+            # forecast(prices[:t]) must match signal(full).loc[t]
+            try:
+                f = mod.forecast(visible_data(prices, t).copy())
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"forecast at {t.date()}: {type(e).__name__}: {e}")
+                continue
+            last_visible = visible_data(prices, t).index[-1]
+            ref = clean.loc[last_visible].reindex(f.index)
+            if not np.allclose(f.fillna(0).values, ref.fillna(0).values, atol=1e-8):
+                return False, f"forecast() != signal().loc[t] at {t.date()} (window / truncation mismatch)"
+
+    msg = f"passed on {done} epochs x {len(kinds)} kinds + truncation"
+    if len(panels) > 1:
+        msg += f" (clean + {gap:.0%} gaps)"
+    if done < len(epochs):
+        msg += f"; {CONFIG['leak_budget_s']}s budget hit after {done}/{len(epochs)} epochs"
+    if errors:
+        msg += f"; {len(errors)} run(s) raised, not counted as leaks, e.g. {errors[0][:120]}"
+    return True, msg
 
 
 # ---------------------------------------------------------------------------
